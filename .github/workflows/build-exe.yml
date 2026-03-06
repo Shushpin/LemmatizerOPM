@@ -3,11 +3,16 @@ name: Build Windows EXE
 on:
   push:
     branches: [ "main", "master" ]
-  workflow_dispatch: # Дозволяє запускати збірку вручну з інтерфейсу GitHub
+  workflow_dispatch:
 
 jobs:
   build-windows:
-    runs-on: windows-latest # Критично важливо: jpackage збирає .exe тільки на Windows-сервері
+    runs-on: windows-latest
+
+    # Вказуємо, що всі команди треба виконувати в папці проєкту
+    defaults:
+      run:
+        working-directory: ./Lemmatizer
 
     steps:
       - name: Checkout repository
@@ -24,7 +29,6 @@ jobs:
         run: mvn clean package
 
       - name: Build EXE with jpackage
-        # Утиліта бере наш скомпільований JAR, папку libs і загортає це все в інсталятор
         run: |
           jpackage --type exe `
           --dest target/installer `
@@ -39,4 +43,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: LemmatizerApp-Windows
-          path: target/installer/*.exe
+          # Тут також вказуємо правильний шлях для завантаження артефакту
+          path: Lemmatizer/target/installer/*.exe
