@@ -2,12 +2,12 @@ package ua.lemmatizer;
 
 public class TextCleaner {
 
-    // Метод статичний, бо він не зберігає ніякого стану
     public static String removePunctuation(String text) {
         if (text == null || text.isEmpty()) {
             return "";
         }
-        // Замінюємо всі розділові знаки на порожнечу і переводимо в нижній регістр
-        return text.replaceAll("\\p{Punct}", "").toLowerCase();
+        // Залишаємо ТІЛЬКИ літери (\p{L}), цифри (\p{Nd}), пробіли (\s) та апострофи (' і ’)
+        // Усе інше (будь-які знаки пунктуації з будь-яких мов) замінюємо на порожнечу
+        return text.replaceAll("[^\\p{L}\\p{Nd}\\s'’]+", "");
     }
 }
