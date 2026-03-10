@@ -139,7 +139,6 @@ public class MainWindow extends JFrame {
         add(new JScrollPane(logArea), BorderLayout.CENTER);
     }
 
-    // НОВИЙ МЕТОД ОБРОБКИ СПИСКУ ФАЙЛІВ
     private void processFiles() {
         if (selectedFiles.isEmpty()) {
             log("❌ Помилка: Спочатку виберіть файл або папку!");
@@ -149,26 +148,26 @@ public class MainWindow extends JFrame {
         processBtn.setEnabled(false);
         openFolderBtn.setVisible(false);
 
-        // Налаштовуємо прогрес-бар
         progressBar.setMaximum(selectedFiles.size());
         progressBar.setValue(0);
 
         log("⏳ Починаємо масову обробку (" + selectedFiles.size() + " шт.)...");
 
         new Thread(() -> {
+            long startTime = System.currentTimeMillis();
+
             int processedCount = 0;
             String selectedLang = (String) langCombo.getSelectedItem();
-            boolean skipLanguageCheck = false; // Щоб не спамити вікном на кожному файлі
+            boolean skipLanguageCheck = false;
 
             for (File file : selectedFiles) {
                 try {
                     Path inputPath = file.toPath();
                     String text = FileService.readFromFile(inputPath);
 
-                    // Перевірка мови (лише для ПЕРШОГО файлу, щоб не мучити користувача щоразу)
                     if (!skipLanguageCheck && !checkLanguageMatch(text, selectedLang)) {
                         log("🛑 Скасовано: Невідповідність мови у файлі " + file.getName());
-                        break; // Зупиняємо весь процес
+                        break;
                     }
                     skipLanguageCheck = true;
 
@@ -194,7 +193,6 @@ public class MainWindow extends JFrame {
                 } finally {
                     processedCount++;
                     final int current = processedCount;
-                    // Оновлюємо прогрес-бар
                     SwingUtilities.invokeLater(() -> {
                         progressBar.setValue(current);
                         progressBar.setString("Оброблено: " + current + " / " + selectedFiles.size());
@@ -202,10 +200,18 @@ public class MainWindow extends JFrame {
                 }
             }
 
-            // Фінальні дії після завершення циклу
+            long endTime = System.currentTimeMillis();
+            double timeInSeconds = (endTime - startTime) / 1000.0;
+
+            // Отримуємо параметри комп'ютера автоматично
+            String sysSpecs = getSystemSpecs();
+
             SwingUtilities.invokeLater(() -> {
                 log("--------------------------------------------------");
-                log("🎉 Завершено! Всі результати збережено в ту ж папку з приписом _done.");
+                log("💻 Залізо: " + sysSpecs);
+                log("⏱ Загальний час виконання: " + String.format("%.2f", timeInSeconds) + " сек.");
+                log("--------------------------------------------------");
+                log("🎉 Завершено! Всі результати збережено.");
                 openFolderBtn.setVisible(true);
                 processBtn.setEnabled(true);
             });
@@ -270,5 +276,50 @@ public class MainWindow extends JFrame {
             logArea.append(message + "\n");
             logArea.setCaretPosition(logArea.getDocument().getLength());
         });
+    }
+    private String getSystemSpecs() {
+        try {
+            // Отримуємо кількість оперативної пам'яті (RAM)
+            com.sun.management.OperatingSystemMXBean osBean =
+                    (com.sun.management.OperatingSystemMXBean) java.lang.management.ManagementFactory.getOperatingSystemMXBean();
+            long ramGB = Math.round(osBean.getTotalMemorySize() / (1024.0 * 1024.0 * 1024.0));
+
+            // Назва ОС та архітектура
+            String os = System.getProperty("os.name");
+            int cores = Runtime.getRuntime().availableProcessors();
+
+            // Намагаємось дістати реальну назву процесора
+            String cpuName = getCPUName();
+            if (cpuName == null || cpuName.isEmpty()) {
+                cpuName = System.getProperty("os.arch") + " (" + cores + " потоків)";
+            }
+
+            return String.format("%s | CPU: %s | RAM: %d ГБ", os, cpuName, ramGB);
+        } catch (Exception e) {
+            return "Не вдалося автоматично визначити характеристики системи.";
+        }
+    }
+
+    private String getCPUName() {
+        try {
+            String os = System.getProperty("os.name").toLowerCase();
+            if (os.contains("win")) {
+                // Для Windows викликаємо системну утиліту wmic
+                Process process = Runtime.getRuntime().exec("wmic cpu get name");
+                process.getOutputStream().close();
+                java.util.Scanner sc = new java.util.Scanner(process.getInputStream());
+                sc.nextLine(); // пропускаємо заголовок "Name"
+                return sc.nextLine().trim();
+            } else if (os.contains("mac")) {
+                // Для Mac (Intel / Apple Silicon) викликаємо sysctl
+                Process process = Runtime.getRuntime().exec(new String[]{"sysctl", "-n", "machdep.cpu.brand_string"});
+                process.getOutputStream().close();
+                java.util.Scanner sc = new java.util.Scanner(process.getInputStream());
+                return sc.nextLine().trim();
+            }
+        } catch (Exception e) {
+            // Якщо не вдалося (наприклад, Linux або немає доступу), повертаємо null
+        }
+        return null;
     }
 }
