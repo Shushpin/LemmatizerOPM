@@ -5,23 +5,29 @@ import java.awt.*;
 import java.io.File;
 import java.nio.file.Path;
 import java.lang.reflect.InvocationTargetException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 public class MainWindow extends JFrame {
     private EnglishLemmatizer englishLemmatizer;
-    private File selectedFile;
+    // ТЕПЕР ТУТ СПИСОК ФАЙЛІВ, А НЕ ОДИН
+    private List<File> selectedFiles = new ArrayList<>();
     private Path lastSavedDir;
 
     private JTextArea logArea;
     private JButton selectFileBtn;
+    private JButton selectFolderBtn; // НОВА КНОПКА
     private JButton processBtn;
     private JButton openFolderBtn;
     private JCheckBox cleanTextCheck;
     private JComboBox<String> langCombo;
+    private JProgressBar progressBar; // ПРОГРЕС-БАР
 
     public MainWindow() {
-        setTitle("Lemmatizer App");
+        setTitle("Lemmatizer App Pro");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setSize(550, 450);
+        setSize(650, 500); // Зробив трохи більшим, щоб все влізло
         setLocationRelativeTo(null);
 
         initUI();
@@ -37,23 +43,28 @@ public class MainWindow extends JFrame {
     }
 
     private void initUI() {
-        JPanel topPanel = new JPanel(new GridLayout(4, 1, 10, 10));
-        topPanel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
+        // Змінили на 5 рядків, бо додали прогрес-бар
+        JPanel topPanel = new JPanel(new GridLayout(5, 1, 10, 10));
+        topPanel.setBorder(BorderFactory.createEmptyBorder(20, 20, 10, 20));
 
-        // Вибір мови (Українська перша за замовчуванням)
+        // 1. Вибір мови
         langCombo = new JComboBox<>(new String[]{"Українська", "English"});
         JPanel langPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
         langPanel.add(new JLabel("Мова тексту: "));
         langPanel.add(langCombo);
         topPanel.add(langPanel);
 
+        // 2. Чекбокс
         cleanTextCheck = new JCheckBox("Видаляти розділові знаки", true);
         topPanel.add(cleanTextCheck);
 
+        // 3. Кнопки вибору Файлу / Папки
         JPanel filePanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        selectFileBtn = new JButton("Вибрати .txt файл");
-        JLabel fileLabel = new JLabel("Файл не вибрано");
+        selectFileBtn = new JButton("Вибрати 1 файл");
+        selectFolderBtn = new JButton("Вибрати папку");
+        JLabel fileLabel = new JLabel("Нічого не вибрано");
 
+        // Логіка для 1 файлу (через нативний FileDialog)
         selectFileBtn.addActionListener(e -> {
             java.awt.FileDialog fileDialog = new java.awt.FileDialog(this, "Виберіть .txt файл", java.awt.FileDialog.LOAD);
             fileDialog.setFile("*.txt");
@@ -63,23 +74,55 @@ public class MainWindow extends JFrame {
             String file = fileDialog.getFile();
 
             if (dir != null && file != null) {
-                selectedFile = new File(dir, file);
-                fileLabel.setText(selectedFile.getName());
+                selectedFiles.clear(); // Очищаємо список
+                selectedFiles.add(new File(dir, file)); // Додаємо 1 файл
+                fileLabel.setText("Обрано: " + file);
                 openFolderBtn.setVisible(false);
             }
         });
 
+        // Логіка для ПАПКИ (через JFileChooser для сумісності з Windows)
+        selectFolderBtn.addActionListener(e -> {
+            JFileChooser chooser = new JFileChooser();
+            chooser.setDialogTitle("Оберіть папку з .txt файлами");
+            chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+
+            if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+                File dir = chooser.getSelectedFile();
+                selectedFiles.clear();
+
+                // Шукаємо всі .txt файли у вибраній папці
+                File[] files = dir.listFiles((d, name) -> name.toLowerCase().endsWith(".txt"));
+                if (files != null && files.length > 0) {
+                    selectedFiles.addAll(Arrays.asList(files));
+                    fileLabel.setText("Обрано папку. Знайдено файлів: " + selectedFiles.size());
+                    openFolderBtn.setVisible(false);
+                } else {
+                    fileLabel.setText("❌ У папці немає .txt файлів!");
+                }
+            }
+        });
+
         filePanel.add(selectFileBtn);
+        filePanel.add(selectFolderBtn);
         filePanel.add(fileLabel);
         topPanel.add(filePanel);
 
-        JPanel actionPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        // 4. Прогрес-бар
+        JPanel progressPanel = new JPanel(new BorderLayout());
+        progressBar = new JProgressBar(0, 100);
+        progressBar.setStringPainted(true);
+        progressBar.setString("Очікування...");
+        progressPanel.add(progressBar, BorderLayout.CENTER);
+        topPanel.add(progressPanel);
 
+        // 5. Кнопки обробки
+        JPanel actionPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
         processBtn = new JButton("Обробити та Зберегти");
         processBtn.setEnabled(false);
-        processBtn.addActionListener(e -> processFile());
+        processBtn.addActionListener(e -> processFiles()); // Викликаємо новий метод
 
-        openFolderBtn = new JButton("📂 Відкрити папку");
+        openFolderBtn = new JButton("📂 Відкрити папку з обробленим файлом (файлами)");
         openFolderBtn.setVisible(false);
         openFolderBtn.addActionListener(e -> openResultFolder());
 
@@ -96,70 +139,83 @@ public class MainWindow extends JFrame {
         add(new JScrollPane(logArea), BorderLayout.CENTER);
     }
 
-    private void processFile() {
-        if (selectedFile == null) {
-            log("❌ Помилка: Спочатку виберіть файл!");
+    // НОВИЙ МЕТОД ОБРОБКИ СПИСКУ ФАЙЛІВ
+    private void processFiles() {
+        if (selectedFiles.isEmpty()) {
+            log("❌ Помилка: Спочатку виберіть файл або папку!");
             return;
         }
 
         processBtn.setEnabled(false);
         openFolderBtn.setVisible(false);
-        log("⏳ Читання файлу: " + selectedFile.getName());
+
+        // Налаштовуємо прогрес-бар
+        progressBar.setMaximum(selectedFiles.size());
+        progressBar.setValue(0);
+
+        log("⏳ Починаємо масову обробку (" + selectedFiles.size() + " шт.)...");
 
         new Thread(() -> {
-            try {
-                Path inputPath = selectedFile.toPath();
-                String text = FileService.readFromFile(inputPath);
-                String selectedLang = (String) langCombo.getSelectedItem();
+            int processedCount = 0;
+            String selectedLang = (String) langCombo.getSelectedItem();
+            boolean skipLanguageCheck = false; // Щоб не спамити вікном на кожному файлі
 
-                // 1. ПЕРЕВІРКА МОВИ перед обробкою
-                if (!checkLanguageMatch(text, selectedLang)) {
-                    log("🛑 Обробку скасовано користувачем (невідповідність мови).");
-                    SwingUtilities.invokeLater(() -> processBtn.setEnabled(true));
-                    return; // Зупиняємо виконання, якщо користувач натиснув "Ні"
+            for (File file : selectedFiles) {
+                try {
+                    Path inputPath = file.toPath();
+                    String text = FileService.readFromFile(inputPath);
+
+                    // Перевірка мови (лише для ПЕРШОГО файлу, щоб не мучити користувача щоразу)
+                    if (!skipLanguageCheck && !checkLanguageMatch(text, selectedLang)) {
+                        log("🛑 Скасовано: Невідповідність мови у файлі " + file.getName());
+                        break; // Зупиняємо весь процес
+                    }
+                    skipLanguageCheck = true;
+
+                    if (cleanTextCheck.isSelected()) {
+                        text = TextCleaner.removePunctuation(text);
+                    }
+
+                    String result = "";
+                    if ("English".equals(selectedLang)) {
+                        result = englishLemmatizer.lemmatize(text);
+                    } else if ("Українська".equals(selectedLang)) {
+                        UkrainianLemmatizer ukrainianLemmatizer = new UkrainianLemmatizer();
+                        result = ukrainianLemmatizer.lemmatize(text);
+                    }
+
+                    Path outputPath = FileService.saveToFile(inputPath, result, "_done");
+                    lastSavedDir = outputPath.getParent();
+
+                    log("✅ Оброблено: " + file.getName());
+
+                } catch (Exception ex) {
+                    log("❌ Помилка файлу " + file.getName() + ": " + ex.getMessage());
+                } finally {
+                    processedCount++;
+                    final int current = processedCount;
+                    // Оновлюємо прогрес-бар
+                    SwingUtilities.invokeLater(() -> {
+                        progressBar.setValue(current);
+                        progressBar.setString("Оброблено: " + current + " / " + selectedFiles.size());
+                    });
                 }
-
-                // 2. Якщо все ок, йдемо далі
-                if (cleanTextCheck.isSelected()) {
-                    log("⚙️ Очищення тексту від пунктуації...");
-                    text = TextCleaner.removePunctuation(text);
-                }
-
-                log("🧠 Лематизація (" + selectedLang + ")...");
-                String result = "";
-
-                if ("English".equals(selectedLang)) {
-                    result = englishLemmatizer.lemmatize(text);
-                } else if ("Українська".equals(selectedLang)) {
-                    UkrainianLemmatizer ukrainianLemmatizer = new UkrainianLemmatizer();
-                    result = ukrainianLemmatizer.lemmatize(text);
-                }
-
-                log("💾 Збереження результату...");
-                Path outputPath = FileService.saveToFile(inputPath, result, "_done");
-
-                lastSavedDir = outputPath.getParent();
-                log("--------------------------------------------------");
-                log("🎉 Успіх! Файл збережено: " + outputPath.toAbsolutePath());
-                log("Або натисніть на |📂 Відкрити папку|, щоб перейти");
-                log("--------------------------------------------------");
-
-                SwingUtilities.invokeLater(() -> openFolderBtn.setVisible(true));
-
-            } catch (Exception ex) {
-                log("❌ Помилка: " + ex.getMessage());
-            } finally {
-                SwingUtilities.invokeLater(() -> processBtn.setEnabled(true));
             }
+
+            // Фінальні дії після завершення циклу
+            SwingUtilities.invokeLater(() -> {
+                log("--------------------------------------------------");
+                log("🎉 Завершено! Всі результати збережено в ту ж папку з приписом _done.");
+                openFolderBtn.setVisible(true);
+                processBtn.setEnabled(true);
+            });
         }).start();
     }
 
-    // --- НОВИЙ МЕТОД ДЛЯ ПЕРЕВІРКИ МОВИ ---
     private boolean checkLanguageMatch(String text, String selectedLang) throws InterruptedException, InvocationTargetException {
         int cyrillicCount = 0;
         int latinCount = 0;
 
-        // Перевіряємо перші 5000 символів (для швидкості)
         int limit = Math.min(text.length(), 5000);
         for (int i = 0; i < limit; i++) {
             char c = text.charAt(i);
@@ -173,17 +229,15 @@ public class MainWindow extends JFrame {
         boolean isTextUkr = cyrillicCount > latinCount;
         boolean isUkrSelected = "Українська".equals(selectedLang);
 
-        // Якщо є невідповідність, викликаємо спливаюче вікно у головному потоці (EDT)
         if (isUkrSelected && !isTextUkr && latinCount > 0) {
             return showWarningDialog("Ви обрали українську мову, але текст схожий на англійський.\nПродовжити обробку?");
         } else if (!isUkrSelected && isTextUkr && cyrillicCount > 0) {
             return showWarningDialog("Ви обрали англійську мову, але текст схожий на український.\nПродовжити обробку?");
         }
 
-        return true; // Мова збігається, продовжуємо
+        return true;
     }
 
-    // Допоміжний метод для відображення діалогу
     private boolean showWarningDialog(String message) throws InterruptedException, InvocationTargetException {
         final boolean[] userAgreed = new boolean[1];
 

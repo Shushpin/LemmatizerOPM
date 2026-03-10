@@ -27,9 +27,10 @@ public class EnglishLemmatizer {
         CoreDocument document = new CoreDocument(text);
         pipeline.annotate(document);
 
-        // Проходимось по всіх токенах (словах) і дістаємо їхні леми
+        // Проходимось по всіх токенах і примусово робимо їх маленькими (toLowerCase)
         return document.tokens().stream()
-                .map(CoreLabel::lemma)
+                .map(token -> token.lemma().toLowerCase())
                 .collect(Collectors.joining(" "));
     }
+
 }

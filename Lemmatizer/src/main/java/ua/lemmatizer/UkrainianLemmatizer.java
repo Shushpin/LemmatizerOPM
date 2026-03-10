@@ -58,25 +58,27 @@ public class UkrainianLemmatizer {
                 // Оновлюємо попереднє слово
                 previousWord = currentWord.toLowerCase();
             } else if (matcher.group(2) != null) {
-                result.append(matcher.group(2));
-            }
+            // Додаємо toLowerCase() сюди, щоб навіть пробіли, цифри та іноземні слова ставали дрібними
+            result.append(matcher.group(2).toLowerCase());
+        }
         }
 
         return result.toString();
     }
 
     private String getLemmaForWord(String word, String prevWord) {
+        // Одразу переводимо оригінальне слово в нижній регістр
         String lowerWord = word.toLowerCase();
 
         // 1. КОНТЕКСТНІ ПРАВИЛА (if-else)
         String contextualLemma = applyContextRules(lowerWord, prevWord);
         if (contextualLemma != null) {
-            return restoreCase(word, contextualLemma);
+            return contextualLemma.toLowerCase();
         }
 
         // 2. БЕЗУМОВНІ ВИНЯТКИ
         if (EXCEPTIONS.containsKey(lowerWord)) {
-            return restoreCase(word, EXCEPTIONS.get(lowerWord));
+            return EXCEPTIONS.get(lowerWord).toLowerCase();
         }
 
         // 3. СТАНДАРТНИЙ LUCENE
@@ -87,13 +89,16 @@ public class UkrainianLemmatizer {
             if (stream.incrementToken()) {
                 String lemma = termAtt.toString();
                 stream.end();
-                return restoreCase(word, lemma);
+                // Повертаємо лему виключно в нижньому регістрі
+                return lemma.toLowerCase();
             }
             stream.end();
         } catch (IOException e) {
             e.printStackTrace();
         }
-        return word;
+
+        // Якщо нічого не знайшли, повертаємо оригінальне слово, але теж маленьке
+        return lowerWord;
     }
 
     // МЕТОД ДЛЯ IF-ELSE ЛОГІКИ НА ОСНОВІ ПОПЕРЕДНЬОГО СЛОВА
@@ -117,13 +122,5 @@ public class UkrainianLemmatizer {
 
         // Можна додавати свої правила сюди...
         return null; // Якщо правил для слова немає, повертаємо null
-    }
-
-    // Допоміжний метод, щоб зберігати велику літеру
-    private String restoreCase(String originalWord, String lemma) {
-        if (Character.isUpperCase(originalWord.charAt(0)) && !lemma.isEmpty()) {
-            return lemma.substring(0, 1).toUpperCase() + lemma.substring(1);
-        }
-        return lemma;
     }
 }
